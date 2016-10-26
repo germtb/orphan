@@ -1,15 +1,14 @@
-#! /usr/bin/env node
-var fs = require('fs');
-var path = require('path');
-var filewalker = require('filewalker');
-var commandLineArgs = require('command-line-args')
-var mm = require('micromatch');
-var untildify = require('untildify');
+#! /usr/bin/env babel-node
+import fs from 'fs';
+import path from 'path';
+import filewalker from 'filewalker';
+import commandLineArgs from 'command-line-args';
+import mm from 'micromatch';
+import untildify from 'untildify';
 
-var importRegex = /[import|export][\s\S]*?from.*?(['"])([.~].*?)(\1)/g;
-var files = {};
-
-var defaultOrphanrc = {
+const filesGraph = {};
+const importRegex = /[import|export][\s\S]*?from.*?(['"])([.~].*?)(\1)/g;
+const defaultOrphanrc = {
   rootDir: '.',
   tilde: '.',
   entryFiles: [
@@ -32,24 +31,12 @@ var defaultOrphanrc = {
 };
 
 // Get config
-var dot = process.env.PWD;
-try {
-  var orphanrc = require(path.join(dot, '.orphanrc'));
-} catch(e) {
-  console.log('orphanrc does not existing or it is using wrong syntax ' + process.env.PWD);
-  console.log('Using default orphanrc');
-  orphanrc = defaultOrphanrc;
-}
+const dot = process.env.PWD;
+const orphanrcPath = path.join(dot, '.orphanrc');
+const orphanrc = fs.existsSync(orphanrcPath) ? require(orphanrcPath) : defaultOrphanrc;
 
-var rootDir = orphanrc.rootDir
-var tilde = orphanrc.tilde
-var entryFiles = orphanrc.entryFiles;
-var uses = orphanrc.uses;
-var ignores = orphanrc.ignores;
-var excludeFolders = orphanrc.excludeFolders;
-
-// Take input overrides
-var optionDefinitions = [
+// Take input
+const optionDefinitions = [
   { name: 'rootDir', alias: 'r', type: String },
   { name: 'tilde', alias: 't', type: String },
   { name: 'entryFiles', alias: 'e', type: String, multiple: true },
@@ -57,84 +44,43 @@ var optionDefinitions = [
   { name: 'ignores', alias: 'i', type: String, multiple: true },
   { name: 'excludeFolders', alias: 'f', type: String, multiple: true }
 ];
-
-var options = commandLineArgs(optionDefinitions);
-
-if (options.rootDir) {
-  rootDir = path.resolve(dot, options.rootDir);
-}
-if (options.tilde) {
-  tilde = path.resolve(dot, options.tilde);
-}
-if (options.entryFiles) {
-  entryFiles = options.entryFiles;
-}
-if (options.uses) {
-  uses = options.uses;
-}
-if (options.ignores) {
-  ignores = options.ignores;
-}
-if (options.excludeFolders) {
-  excludeFolders = options.excludeFolders;
-}
+const options = commandLineArgs(optionDefinitions);
 
 // Normalize config
-rootDir = absolutify(rootDir, dot);
-tilde = absolutify(tilde, dot);
-entryFiles = entryFiles.map(f => absolutify(f, dot));
-excludeFolders = excludeFolders.map(f => f[f.length - 1] === '/' ? f : f + '/');
-excludeFolders = excludeFolders.map(f => f[0] === '/' ? f : '/' + f);
+const rootDir = absolutify(options.rootDir ? options.rootDir : orphanrc.rootDir, dot);
+const tilde = absolutify(options.tilde ? options.tilde : orphanrc.tilde, dot);
+const entryFiles = (options.entryFiles ? options.entryFiles : orphanrc.entryFiles).map(f => absolutify(f, dot));
+const uses = options.uses ? options.uses : orphanrc.uses;
+const ignores = options.ignores ? options.ignores : orphanrc.ignores;
+const excludeFolders = (options.excludeFolders ? options.excludeFolders : orphanrc.excludeFolders)
+  .map(f => f[f.length - 1] === '/' ? f : f + '/')
+  .map(f => f[0] === '/' ? f : '/' + f);
 
 // Build graph
 filewalker(rootDir)
-  .on('file', function(p, s) {
-    var filePath = path.join(rootDir, p);
+  .on('file', (p, s) => {
+    const filePath = path.join(rootDir, p);
 
-    for (var ignore of ignores) {
-      if (mm.isMatch(filePath, ignore)) {
-        return;
-      }
+    if (ignores.some(i => mm.isMatch(filePath, i))) {
+      return;
     }
 
-    for (var folder of excludeFolders) {
-      if (filePath.includes(folder)) {
-        return;
-      }
+    if (excludeFolders.some(f => filePath.includes(f))) {
+      return;
     }
 
     if (!uses.some(x => mm.isMatch(filePath, x))) {
       return;
     }
 
-    files[filePath] = {
+    filesGraph[filePath] = {
       visited: false
     };
   })
-  .on('done', function() {
-    function visit(file) {
-      if (!files[file]) {
-        console.log(`${file} does not exist or was ignored`);
-        return;
-      }
-
-      if (files[file].visited) {
-        return;
-      }
-
-      files[file].visited = true;
-
-      for (var importedFile of importsOf(file)) {
-        visit(importedFile);
-      }
-    }
-
-    for (var f of entryFiles) {
-      visit(f);
-    }
-
-    for (var f in files) {
-      if (!files[f].visited) {
+  .on('done', () => {
+    entryFiles.forEach(f => visit(f));
+    for (const f in filesGraph) {
+      if (!filesGraph[f].visited) {
         console.log(f);
       }
     }
@@ -142,38 +88,45 @@ filewalker(rootDir)
   .walk();
 
 function absolutify(target, dir) {
-  target = path.normalize(target);
-  target = untildify(target);
-  target = path.resolve(dir, target);
-  return target;
+  return path.resolve(dir, untildify(path.normalize(target)));
 }
 
 function importsOf(file) {
-  var imports = [];
-  var data = fs.readFileSync(file, 'utf8');
-  var match = null;
+  const imports = [];
+  const data = fs.readFileSync(file, 'utf8');
+  let match = null;
 
   while ((match = importRegex.exec(data)) != null ) {
-    var importedFile = match[2];
-
-    if (importedFile[0] === '~') {
-      importedFile = importedFile.replace('~', tilde);
-    } else {
-      importedFile = path.resolve(path.dirname(file), importedFile);
-    }
+    let importedFile = match[2];
+    importedFile = importedFile.replace('~', tilde); // Deals with ~ being used in imports
+    importedFile = path.resolve(path.dirname(file), importedFile);
 
     if (fs.existsSync(importedFile) && fs.lstatSync(importedFile).isDirectory()) {
-      if (!fs.existsSync(importedFile + '.js')) {
+      if (fs.existsSync(importedFile + '.js')) {
+        importedFile += '.js';
+      } else {
         importedFile += '/index.js';
       }
     }
 
-    if (!path.extname(importedFile)) {
-      importedFile += '.js';
-    }
+    importedFile = path.extname(importedFile) ? importedFile : importedFile + '.js';
 
     imports.push(importedFile);
   }
 
   return imports;
+}
+
+function visit(file) {
+  if (!filesGraph[file]) {
+    console.log(`${file} does not exist or was ignored`);
+    return;
+  }
+
+  if (filesGraph[file].visited) {
+    return;
+  }
+
+  filesGraph[file].visited = true;
+  importsOf(file).forEach(f => visit(f));
 }
