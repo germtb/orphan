@@ -5,6 +5,7 @@ import filewalker from 'filewalker';
 import commandLineArgs from 'command-line-args';
 import mm from 'micromatch';
 import untildify from 'untildify';
+import contains from 'contains-path';
 
 const filesGraph = {};
 const importRegex = /[import|export][\s\S]*?from.*?(['"])([.~].*?)(\1)/g;
@@ -21,9 +22,7 @@ const defaultOrphanrc = {
     '**/*.test.js',
     '**/*.spec.js',
     '**/*.config.js',
-    '**/*.babel.js'
-  ],
-  excludeFolders: [
+    '**/*.babel.js',
     'node_modules',
     '.git',
     'gulp'
@@ -41,8 +40,7 @@ const optionDefinitions = [
   { name: 'tilde', alias: 't', type: String },
   { name: 'entryFiles', alias: 'e', type: String, multiple: true },
   { name: 'uses', alias: 'u', type: String, multiple: true },
-  { name: 'ignores', alias: 'i', type: String, multiple: true },
-  { name: 'excludeFolders', alias: 'f', type: String, multiple: true }
+  { name: 'ignores', alias: 'i', type: String, multiple: true }
 ];
 const options = commandLineArgs(optionDefinitions);
 
@@ -52,20 +50,13 @@ const tilde = absolutify(options.tilde ? options.tilde : orphanrc.tilde, dot);
 const entryFiles = (options.entryFiles ? options.entryFiles : orphanrc.entryFiles).map(f => absolutify(f, dot));
 const uses = options.uses ? options.uses : orphanrc.uses;
 const ignores = options.ignores ? options.ignores : orphanrc.ignores;
-const excludeFolders = (options.excludeFolders ? options.excludeFolders : orphanrc.excludeFolders)
-  .map(f => f[f.length - 1] === '/' ? f : f + '/')
-  .map(f => f[0] === '/' ? f : '/' + f);
 
 // Build graph
 filewalker(rootDir)
   .on('file', (p, s) => {
     const filePath = path.join(rootDir, p);
 
-    if (ignores.some(i => mm.isMatch(filePath, i))) {
-      return;
-    }
-
-    if (excludeFolders.some(f => filePath.includes(f))) {
+    if (ignores.some(i => mm.isMatch(filePath, i) || contains(filePath, i.replace('**/*', '')))) {
       return;
     }
 
