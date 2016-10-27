@@ -1,3 +1,5 @@
+'use babel';
+
 import fs from 'fs';
 import path from 'path';
 import filewalker from 'filewalker';
@@ -36,11 +38,11 @@ export default function orphan(dot, onDone, options = {}) {
   const orphanrc = fs.existsSync(orphanrcPath) ? require(orphanrcPath) : defaultOrphanrc;
 
   // Normalize config
-  const rootDir = absolutify(orphanrc.rootDir, dot);
-  const tilde = absolutify(orphanrc.tilde, dot);
-  const entryFiles = (orphanrc.entryFiles).map(f => absolutify(f, dot));
-  const uses = orphanrc.uses;
-  const ignores = orphanrc.ignores;
+  const rootDir = absolutify(options.rootDir ? options.rootDir : orphanrc.rootDir, dot);
+  const tilde = absolutify(options.tilde ? options.tilde : orphanrc.tilde, dot);
+  const entryFiles = (options.entryFiles ? options.entryFiles : orphanrc.entryFiles).map(f => absolutify(f, dot));
+  const uses = options.uses ? options.uses : orphanrc.uses;
+  const ignores = options.ignores ? options.ignores : orphanrc.ignores;
 
   // Build graph
   filewalker(rootDir)

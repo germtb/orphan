@@ -1,4 +1,5 @@
 'use strict';
+'use babel';
 
 Object.defineProperty(exports, "__esModule", {
   value: true
@@ -31,15 +32,13 @@ var _containsPath2 = _interopRequireDefault(_containsPath);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-require('babel-register');
-
 var importRegex = /[import|export][\s\S]*?from.*?(['"])([.~].*?)(\1)/g;
 var defaultOrphanrc = {
   rootDir: '.',
   tilde: '.',
   entryFiles: ['./index.js'],
   uses: ['**/*.js'],
-  ignores: ['**/*.test.js', '**/*.spec.js', '**/*.config.js', '**/*.babel.js', 'node_modules', '.git', 'gulp']
+  ignores: ['**/*.test.js', '**/*.spec.js', '**/*.config.js', '**/*.babel.js', 'node_modules', '.git', 'gulp', 'dist']
 };
 
 function orphan(dot, onDone) {
@@ -49,25 +48,17 @@ function orphan(dot, onDone) {
   var orphanFiles = [];
 
   // Get config
-  console.log('dot:', dot);
   var orphanrcPath = _path2.default.join(dot, '.orphanrc');
-  console.log('orphanrcPath:', orphanrcPath);
   var orphanrc = _fs2.default.existsSync(orphanrcPath) ? require(orphanrcPath) : defaultOrphanrc;
-  console.log('orphanrc:', orphanrc);
 
   // Normalize config
-  var rootDir = absolutify(orphanrc.rootDir, dot);
-  console.log('rootDir:', rootDir);
-  var tilde = absolutify(orphanrc.tilde, dot);
-  console.log('tilde:', tilde);
-  var entryFiles = orphanrc.entryFiles.map(function (f) {
+  var rootDir = absolutify(options.rootDir ? options.rootDir : orphanrc.rootDir, dot);
+  var tilde = absolutify(options.tilde ? options.tilde : orphanrc.tilde, dot);
+  var entryFiles = (options.entryFiles ? options.entryFiles : orphanrc.entryFiles).map(function (f) {
     return absolutify(f, dot);
   });
-  console.log('entryFiles:', entryFiles);
-  var uses = orphanrc.uses;
-  console.log('uses:', uses);
-  var ignores = orphanrc.ignores;
-  console.log('ignores:', ignores);
+  var uses = options.uses ? options.uses : orphanrc.uses;
+  var ignores = options.ignores ? options.ignores : orphanrc.ignores;
 
   // Build graph
   (0, _filewalker2.default)(rootDir).on('file', function (p, s) {
@@ -142,7 +133,7 @@ function visit(file, filesGraph, tilde) {
   }
 
   filesGraph[file].visited = true;
-  importsOf(file).forEach(function (f) {
+  importsOf(file, tilde).forEach(function (f) {
     return visit(f, filesGraph, tilde);
   });
 }
