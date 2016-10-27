@@ -1,13 +1,10 @@
-#! /usr/bin/env babel-node
 import fs from 'fs';
 import path from 'path';
 import filewalker from 'filewalker';
-import commandLineArgs from 'command-line-args';
 import mm from 'micromatch';
 import untildify from 'untildify';
 import contains from 'contains-path';
 
-const filesGraph = {};
 const importRegex = /[import|export][\s\S]*?from.*?(['"])([.~].*?)(\1)/g;
 const defaultOrphanrc = {
   rootDir: '.',
@@ -25,64 +22,60 @@ const defaultOrphanrc = {
     '**/*.babel.js',
     'node_modules',
     '.git',
-    'gulp'
+    'gulp',
+    'dist'
   ]
 };
 
-// Get config
-const dot = process.env.PWD;
-const orphanrcPath = path.join(dot, '.orphanrc');
-const orphanrc = fs.existsSync(orphanrcPath) ? require(orphanrcPath) : defaultOrphanrc;
+export default function orphan(dot, onDone, options = {}) {
+  const filesGraph = {};
+  const orphanFiles = [];
 
-// Take input
-const optionDefinitions = [
-  { name: 'rootDir', alias: 'r', type: String },
-  { name: 'tilde', alias: 't', type: String },
-  { name: 'entryFiles', alias: 'e', type: String, multiple: true },
-  { name: 'uses', alias: 'u', type: String, multiple: true },
-  { name: 'ignores', alias: 'i', type: String, multiple: true }
-];
-const options = commandLineArgs(optionDefinitions);
+  // Get config
+  const orphanrcPath = path.join(dot, '.orphanrc');
+  const orphanrc = fs.existsSync(orphanrcPath) ? require(orphanrcPath) : defaultOrphanrc;
 
-// Normalize config
-const rootDir = absolutify(options.rootDir ? options.rootDir : orphanrc.rootDir, dot);
-const tilde = absolutify(options.tilde ? options.tilde : orphanrc.tilde, dot);
-const entryFiles = (options.entryFiles ? options.entryFiles : orphanrc.entryFiles).map(f => absolutify(f, dot));
-const uses = options.uses ? options.uses : orphanrc.uses;
-const ignores = options.ignores ? options.ignores : orphanrc.ignores;
+  // Normalize config
+  const rootDir = absolutify(orphanrc.rootDir, dot);
+  const tilde = absolutify(orphanrc.tilde, dot);
+  const entryFiles = (orphanrc.entryFiles).map(f => absolutify(f, dot));
+  const uses = orphanrc.uses;
+  const ignores = orphanrc.ignores;
 
-// Build graph
-filewalker(rootDir)
-  .on('file', (p, s) => {
-    const filePath = path.join(rootDir, p);
+  // Build graph
+  filewalker(rootDir)
+    .on('file', (p, s) => {
+      const filePath = path.join(rootDir, p);
 
-    if (ignores.some(i => mm.isMatch(filePath, i) || contains(filePath, i.replace('**/*', '')))) {
-      return;
-    }
-
-    if (!uses.some(x => mm.isMatch(filePath, x))) {
-      return;
-    }
-
-    filesGraph[filePath] = {
-      visited: false
-    };
-  })
-  .on('done', () => {
-    entryFiles.forEach(f => visit(f));
-    for (const f in filesGraph) {
-      if (!filesGraph[f].visited) {
-        console.log(f);
+      if (ignores.some(i => mm.isMatch(filePath, i) || contains(filePath, i.replace('**/*', '')))) {
+        return;
       }
-    }
-  })
-  .walk();
+
+      if (!uses.some(x => mm.isMatch(filePath, x))) {
+        return;
+      }
+
+      filesGraph[filePath] = {
+        visited: false
+      };
+    })
+    .on('done', () => {
+      entryFiles.forEach(f => visit(f, filesGraph, tilde));
+      for (const f in filesGraph) {
+        if (!filesGraph[f].visited) {
+          orphanFiles.push(f);
+        }
+      }
+      onDone(orphanFiles);
+    })
+    .walk();
+}
 
 function absolutify(target, dir) {
   return path.resolve(dir, untildify(path.normalize(target)));
 }
 
-function importsOf(file) {
+function importsOf(file, tilde) {
   const imports = [];
   const data = fs.readFileSync(file, 'utf8');
   let match = null;
@@ -108,7 +101,7 @@ function importsOf(file) {
   return imports;
 }
 
-function visit(file) {
+function visit(file, filesGraph, tilde) {
   if (!filesGraph[file]) {
     console.log(`${file} does not exist or was ignored`);
     return;
@@ -119,5 +112,5 @@ function visit(file) {
   }
 
   filesGraph[file].visited = true;
-  importsOf(file).forEach(f => visit(f));
+  importsOf(file, tilde).forEach(f => visit(f, filesGraph, tilde));
 }

@@ -1,8 +1,10 @@
 {
   "name": "orphan",
+  "main": "./dist/orphan.js",
   "version": "1.0.0",
   "description": "",
   "scripts": {
+    "build": "babel orphan.js > dist/orphan.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -17,6 +19,6 @@
     "micromatch": "^2.3.11",
     "untildify": "^3.0.2"
   },
-  "bin": "./orphan.js",
+  "bin": "./index.js",
   "devDependencies": {}
 }
