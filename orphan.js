@@ -1,3 +1,5 @@
+// Copyright 2016 FanDuel, Inc.
+
 'use babel';
 
 import fs from 'fs';

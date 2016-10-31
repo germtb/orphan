@@ -1,4 +1,6 @@
 'use strict';
+// Copyright 2016 FanDuel, Inc.
+
 'use babel';
 
 Object.defineProperty(exports, "__esModule", {
